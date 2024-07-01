@@ -5,6 +5,7 @@ import datetime
 import pandas as pd
 from pathlib import Path
 import datajoint as dj
+from scipy.stats import ttest_ind
 
 plt.style.use('tableau-colorblind10')
 
@@ -18,11 +19,9 @@ class ChemoTime:
 
     name = 'phase_9c_chemotime_plot'
     query = 'Experiment'
-    tables = ['Session', 'Self', 'Animal']
     returns = {'plot':plt.Figure}
-    inherits = ['phase_9c_session_stats_no_angle']
 
-    def run(key, Session, Self, Animal, phase_9c_session_stats_no_angle):
+    def run(key):
 
         exclusion_list = [383,385,387,384,386,388,379,380] # corrupted session ids
 
@@ -117,11 +116,9 @@ class Chemo:
 
     name = 'phase_9c_chemo_plot'
     query = 'Experiment'
-    tables = ['Session', 'Self', 'Animal']
     returns = {'plot':plt.Figure}
-    inherits = ['phase_9c_session_stats_no_angle']
 
-    def run(key, Session, Self, Animal, phase_9c_session_stats_no_angle):
+    def run(key):
 
         exclusion_list = [383,385,387,384,386,388,379,380] # corrupted session ids
 
@@ -135,16 +132,12 @@ class Chemo:
         controldf = controldf[~controldf['session_id'].isin(exclusion_list)]
         controldf['date'] = controldf['session_timestamp'].dt.date
 
-        base_dict, control_dict = {}, {}
-
+        base_ls, control_ls = [], []
         # loop by animal and date
-        for i, group in controldf.groupby(['animal_name','date']):
-            if i[0] not in base_dict:
-                base_dict[i[0]] = {'success':0, 'non_impulsive':0, 'right_port':0, 'total':0}
-                control_dict[i[0]] = {'success':0, 'non_impulsive':0, 'right_port':0, 'total':0}
-
-            # sort group by datetime
+        for i, group in controldf.groupby(['animal_name', 'date']):
             group = group.sort_values('session_timestamp').reset_index(drop=True)
+            base_dict = {'success':0, 'non_impulsive':0, 'right_port':0, 'total':0, 'date':i[1], 'animal_name':i[0]}
+            control_dict = {'success':0, 'non_impulsive':0, 'right_port':0, 'total':0, 'date':i[1], 'animal_name':i[0]}
 
             # compute success stats for second and third sessions
             basekey = {key:group.iloc[1].to_dict()[key] for key in ['experimenter','experiment_id','session_id']}
@@ -155,19 +148,19 @@ class Chemo:
             # aggregate stats across dates
             for trial in base_stats:
                 for k, v in trial.items():
-                    base_dict[i[0]][k] += int(v)
-                base_dict[i[0]]['total'] += 1
+                    base_dict[k] += int(v)
+                base_dict['total'] += 1
             for trial in control_stats:
                 for k, v in trial.items():
-                    control_dict[i[0]][k] += int(v)
-                control_dict[i[0]]['total'] += 1
+                    control_dict[k] += int(v)
+                control_dict['total'] += 1
+            base_ls.append(base_dict)
+            control_ls.append(control_dict)
 
-        control_df = pd.DataFrame.from_dict(control_dict, orient='index')
+        control_df = pd.DataFrame(control_ls)
         control_df.reset_index(inplace=True)
-        control_df.rename(columns={'index':'animal_name'}, inplace=True)
-        base_df = pd.DataFrame.from_dict(base_dict, orient='index')
+        base_df = pd.DataFrame(base_ls)
         base_df.reset_index(inplace=True)
-        base_df.rename(columns={'index':'animal_name'}, inplace=True)
 
         # filter to all that are between 17/05 and 19/50
         start_date = datetime.datetime(2024, 5, 21, 0, 0, 0)
@@ -179,41 +172,33 @@ class Chemo:
         activedf = activedf[~activedf['session_id'].isin(exclusion_list)]
         activedf['date'] = activedf['session_timestamp'].dt.date
 
-        activebase_dict, active_dict = {}, {}
-
-        # loop by animal and date
-        for i, group in activedf.groupby(['animal_name','date']):
-            if i[1] == datetime.date(2024, 5, 22): # this day is corrupted
+        active_ls, activebase_ls = [], []
+        for i, group in activedf.groupby(['animal_name', 'date']):
+            if i[1] == datetime.date(2024, 5, 22):
+                # this day is corrupted
                 continue
-            if i[0] not in activebase_dict:
-                activebase_dict[i[0]] = {'success':0, 'non_impulsive':0, 'right_port':0, 'total':0}
-                active_dict[i[0]] = {'success':0, 'non_impulsive':0, 'right_port':0, 'total':0}
-
-            # sort group by datetime
             group = group.sort_values('session_timestamp').reset_index(drop=True)
-
-            # compute success stats for second and third sessions
-            activebasekey = {key:group.iloc[1].to_dict()[key] for key in ['experimenter','experiment_id','session_id']}
-            activekey = {key:group.iloc[2].to_dict()[key] for key in ['experimenter','experiment_id','session_id']}
-            activebase_stats = phase_9c_session_stats_no_angle(activebasekey)['session_stats']
+            active_dict = {'success':0, 'non_impulsive':0, 'right_port':0, 'total':0, 'date':i[1], 'animal_name':i[0]}
+            activebase_dict = {'success':0, 'non_impulsive':0, 'right_port':0, 'total':0, 'date':i[1], 'animal_name':i[0]}
+            activekey = {key:group.iloc[1].to_dict()[key] for key in ['experimenter','experiment_id','session_id']}
+            activebasekey = {key:group.iloc[2].to_dict()[key] for key in ['experimenter','experiment_id','session_id']}
             active_stats = phase_9c_session_stats_no_angle(activekey)['session_stats']
-
-            # aggregate stats
-            for trial in activebase_stats:
-                for k, v in trial.items():
-                    activebase_dict[i[0]][k] += int(v)
-                activebase_dict[i[0]]['total'] += 1
+            activebase_stats = phase_9c_session_stats_no_angle(activebasekey)['session_stats']
             for trial in active_stats:
                 for k, v in trial.items():
-                    active_dict[i[0]][k] += int(v)
-                active_dict[i[0]]['total'] += 1
+                    active_dict[k] += int(v)
+                active_dict['total'] += 1
+            for trial in activebase_stats:
+                for k, v in trial.items():
+                    activebase_dict[k] += int(v)
+                activebase_dict['total'] += 1
+            active_ls.append(active_dict)
+            activebase_ls.append(activebase_dict)
 
-        active_df = pd.DataFrame.from_dict(active_dict, orient='index')
+        active_df = pd.DataFrame(active_ls)
         active_df.reset_index(inplace=True)
-        active_df.rename(columns={'index':'animal_name'}, inplace=True)
-        activebase_df = pd.DataFrame.from_dict(activebase_dict, orient='index')
+        activebase_df = pd.DataFrame(activebase_ls)
         activebase_df.reset_index(inplace=True)
-        activebase_df.rename(columns={'index':'animal_name'}, inplace=True)
 
         # compute success rates
         control_df['success'] = control_df['success'] / control_df['total']
@@ -241,47 +226,40 @@ class Chemo:
                 tmpactive_df = active_df[active_df['animal_name'].str[-2] != '4']
                 tmpactivebase_df = activebase_df[activebase_df['animal_name'].str[-2] != '4']
 
+            tmpcontrol_df.sort_values(['date', 'animal_name'], inplace=True)
+            tmpbase_df.sort_values(['date', 'animal_name'], inplace=True)
+            tmpactive_df.sort_values(['date', 'animal_name'], inplace=True)
+            tmpactivebase_df.sort_values(['date', 'animal_name'], inplace=True)
             tmpcontrol_df.reset_index(inplace=True)
             tmpbase_df.reset_index(inplace=True)
             tmpactive_df.reset_index(inplace=True)
             tmpactivebase_df.reset_index(inplace=True)
 
-            # plot base vs control for all animals
-            fig, ax = plt.subplots()
-            for i, row in tmpbase_df.iterrows():
-                ax.plot([0,1], [row['success'], tmpcontrol_df.iloc[i]['success']], label=row['animal_name'])
-            ax.bar([0,1], [tmpbase_df['success'].mean(), tmpcontrol_df['success'].mean()], yerr=[tmpbase_df['success'].std(), tmpcontrol_df['success'].std()], capsize=5, width=0.4, alpha=0.7)
-            ax.legend()
-            ax.set_xticks([0,1])
-            ax.set_xticklabels(['Pre Saline', 'After Saline'])
-            ax.set_title('Saline Success Rate')
-            fig.savefig(Path.home() / 'Documents' / 'dan_plots' / f'control_vs_base_cohort{j}.png', dpi=300)
-            
-            # plot active vs activebase for all animals
-            fig, ax = plt.subplots()
-            for i, row in tmpactivebase_df.iterrows():
-                ax.plot([0,1], [row['success'], tmpactive_df.iloc[i]['success']], label=row['animal_name'])
-            ax.bar([0,1], [tmpactivebase_df['success'].mean(), tmpactive_df['success'].mean()], yerr=[tmpactivebase_df['success'].std(), tmpactive_df['success'].std()], capsize=5, width=0.4, alpha=0.7)
-            ax.legend()
-            ax.set_xticks([0,1])
-            ax.set_xticklabels(['Pre DCZ', 'After DCZ'])
-            ax.set_title('DCZ Success Rate')
-            fig.savefig(Path.home() / 'Documents' / 'dan_plots' / f'active_vs_activebase_cohort{j}.png', dpi=300)
+            def plot_df(df1, df2, stat, ticklabels, title, filename):
+                fig, ax = plt.subplots()
+                t_stat, p_val = ttest_ind(df1[stat], df2[stat])
+                df1 = df1.groupby('animal_name').mean()
+                df2 = df2.groupby('animal_name').mean()
+                df1.reset_index(inplace=True)
+                df2.reset_index(inplace=True)
+                pos = (df1[stat].mean() + df2[stat].mean()) / 2
+                ax.text(0.5, 0.975, 'n.s.', color='black', ha='center')
+                ax.text(0.5, 0.1, f'p = {p_val:.2f}', color='black', ha='center')
+                for i, row in df1.iterrows():
+                    ax.plot([0,1], [row[stat], df2.iloc[i][stat]], label=row['animal_name'], color='grey')
+                ax.bar([0,1], [df1[stat].mean(), df2[stat].mean()], yerr=[df1[stat].std(), df2[stat].std()], capsize=5, width=0.4, alpha=0.7)
+                ax.set_xticks([0,1])
+                ax.set_xticklabels(ticklabels)
+                ax.set_title(title)
+                fig.savefig(Path.home() / 'Documents' / 'dan_plots' / filename, dpi=300)
 
-            # plot control vs active for all animals
-            fig, ax = plt.subplots()
-            for i, row in tmpcontrol_df.iterrows():
-                if j == 2 and row['animal_name'] == 'WTJP248_3b':
-                    delta = 0.01 # right on top of each other so just getting lines to show
-                    ax.plot([0,1], [row['success'] + delta, tmpactive_df.iloc[i]['success'] + delta], label=row['animal_name'])
-                else:
-                    ax.plot([0,1], [row['success'], tmpactive_df.iloc[i]['success']], label=row['animal_name'])
-            ax.bar([0,1], [tmpcontrol_df['success'].mean(), tmpactive_df['success'].mean()], yerr=[tmpcontrol_df['success'].std(), tmpactive_df['success'].std()], capsize=5, width=0.4, alpha=0.7)
-            ax.legend()
-            ax.set_xticks([0,1])
-            ax.set_xticklabels(['Saline', 'DCZ'])
-            ax.set_title('Saline vs DCZ Success Rate')
-            fig.savefig(Path.home() / 'Documents' / 'dan_plots' / f'control_vs_active_cohort{j}.png', dpi=300)
+            plot_df(tmpbase_df, tmpcontrol_df, 'success', ['Pre Saline', 'After Saline'], 'Saline Success Rate', f'control_vs_base_cohort{j}.png')
+            plot_df(tmpactivebase_df, tmpactive_df, 'success', ['Pre DCZ', 'After DCZ'], 'DCZ Success Rate', f'active_vs_activebase_cohort{j}.png')
+            plot_df(tmpcontrol_df, tmpactive_df, 'success', ['Saline', 'DCZ'], 'Saline vs DCZ Success Rate', f'control_vs_active_cohort{j}.png')
+            plot_df(tmpbase_df, tmpcontrol_df, 'non_impulsive', ['Pre Saline', 'After Saline'], 'Saline non_impulsive Rate', f'saline_control_impulsive_cohort{j}.png')
+            plot_df(tmpactivebase_df, tmpactive_df, 'non_impulsive', ['Pre DCZ', 'After DCZ'], 'DCZ non_impulsive Rate', f'dcz_control_impulsive_cohort{j}.png')
+            plot_df(tmpbase_df, tmpcontrol_df, 'right_port', ['Pre Saline', 'After Saline'], 'Saline right_port Rate', f'saline_control_port_cohort{j}.png')
+            plot_df(tmpactivebase_df, tmpactive_df, 'right_port', ['Pre DCZ', 'After DCZ'], 'DCZ right_port Rate', f'dcz_control_port_cohort_{j}.png')
 
 
 @antelope_analysis
@@ -293,11 +271,9 @@ class AnglePlot13:
 
     name = 'phase_9c_angle_plot_13'
     query = 'Experiment'
-    tables = ['Session', 'Self', 'Animal']
     returns = {'plot':plt.Figure}
-    inherits = ['phase_9c_session_stats']
 
-    def run(key, Session, Self, Animal, phase_9c_session_stats):
+    def run(key):
 
         # fetch data
         df = (Session * Self * Animal & key).proj('session_notes','session_timestamp','animal_name').fetch(format='frame')
@@ -347,6 +323,58 @@ class AnglePlot13:
 
 
 @antelope_analysis
+class TimeoutAnglePlot:
+    """
+    Function filters which sessions are phase 9c.
+    Then plots success rates by angle.
+    """
+
+    name = 'phase_9c_timeoutangle_plot'
+    query = 'Experiment'
+    returns = {'plot':plt.Figure}
+
+    def run(key):
+
+        # fetch data
+        df = (Session * Self * Animal & key).proj('session_notes','session_timestamp','animal_name').fetch(format='frame')
+        df.reset_index(inplace=True)
+        
+        # filter to all that are 9c and 1000ms 15/05
+        start_date = datetime.datetime(2024, 5, 15, 0, 0, 0)
+        end_date = datetime.datetime(2024, 5, 16, 0, 0, 0)
+        df = df[(df['session_notes'].str.contains('phase:9c')) & (df['session_notes'].str.contains('wait:1000')) & (df['session_timestamp'] >= start_date) & (df['session_timestamp'] <= end_date)]
+
+        bindf = []
+
+        # loop through array and append success stats
+        for i, row in df.iterrows():
+            print(row)
+            key = {key:row.to_dict()[key] for key in ['experimenter','experiment_id','session_id']}
+            session_stats = phase_9c_session_stats(key, session_range=[0.25,1])['session_stats']
+            for k, v in session_stats.items():
+                bindf.append({'angle':int(k), 
+                            'timeout':v['timeout'] / v['total']})
+                if int(k) == 15: # hacky way to get circle closed
+                    bindf.append({'angle':375, 
+                                'timeout':v['timeout'] / v['total']})
+
+        df = pd.DataFrame(bindf)
+        df = df.groupby('angle').mean().reset_index()
+
+        # create plot
+        fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+        ax.plot(df['angle'] * np.pi / 180, df['timeout'], label='Timeout')
+
+        ax.set_title('15/05/24 timeout rates')  # Set title
+        ax.grid(True)  # Show a grid
+        ax.set_aspect('equal')
+        ax.set_ylim(0, 1)
+        ax.set_theta_zero_location('N')
+
+        fig.savefig(Path.home() / 'Documents' / 'dan_plots' / 'timeout_plot.png', dpi=300)
+
+
+@antelope_analysis
 class AnglePlot:
     """
     Function filters which sessions are phase 9c.
@@ -355,11 +383,9 @@ class AnglePlot:
 
     name = 'phase_9c_angle_plot'
     query = 'Experiment'
-    tables = ['Session', 'Self', 'Animal']
     returns = {'plot':plt.Figure}
-    inherits = ['phase_9c_session_stats']
 
-    def run(key, Session, Self, Animal, phase_9c_session_stats):
+    def run(key):
 
         # fetch data
         df = (Session * Self * Animal & key).proj('session_notes','session_timestamp','animal_name').fetch(format='frame')
@@ -414,11 +440,9 @@ class Training:
 
     name = 'phase_9c_training'
     query = 'Experiment'
-    tables = ['Session', 'Self', 'Animal']
     returns = {'plot':plt.Figure}
-    inherits = ['phase_9c_session_stats_no_angle']
 
-    def run(key, Session, Self, Animal, phase_9c_session_stats_no_angle):
+    def run(key):
 
         # fetch data
         df = (Session * Self * Animal & key).proj('session_notes','session_timestamp','animal_name').fetch(format='frame')
@@ -542,10 +566,9 @@ class SessionStatsNoAngle:
 
     name = 'phase_9c_session_stats_no_angle'
     query = 'Session'
-    tables = ['IntervalEvents', 'Kinematics', 'Mask']
     returns = {'session_stats':list}
 
-    def run(key, IntervalEvents, Kinematics, Mask):
+    def run(key):
 
         # fetch data
         restriction = [f'intervalevents_name = "{i}{j}"' for i in ['LED_','SENSOR'] for j in range(1,7)] + ['intervalevents_name = "GO_CUE"']
@@ -606,11 +629,10 @@ class SessionStats:
 
     name = 'phase_9c_session_stats'
     query = 'Session'
-    tables = ['IntervalEvents', 'Kinematics', 'Mask']
     args = {'session_range':list, 'buffer':int} # list of two floats giving the range of trials to consider
     returns = {'session_stats':float}
 
-    def run(key, IntervalEvents, Kinematics, Mask, session_range=[0,0], buffer=5):
+    def run(key, session_range=[0,0], buffer=5):
 
         # fetch data
         restriction = [f'intervalevents_name = "{i}{j}"' for i in ['LED_','SENSOR'] for j in range(1,7)] + ['intervalevents_name = "GO_CUE"']
@@ -639,7 +661,7 @@ class SessionStats:
         # figure out trial statistics and bin by head angle
         session_stats = {}
         for i in range(0, 360, 30):
-            session_stats[i+15] = {'success':0, 'non_impulsive':0, 'right_port':0, 'total':0}
+            session_stats[i+15] = {'success':0, 'non_impulsive':0, 'right_port':0, 'total':0, 'timeout':0}
         length = len(trials['led1'])
         for trial in range(int(length*session_range[0]), int(length*session_range[1])):
             try:
@@ -652,10 +674,6 @@ class SessionStats:
                     if trials[f'sensor{i}'][trial][0].size > 0 and trials[f'sensor{i}'][trial][0][0] == 1:
                         sensor = i
                 gocue = (trials['gocue'][trial][0].size >= 1)
-
-                # if no sensor, trial is a timeout and we skip
-                if sensor is None:
-                    continue
 
                 # compute head angle
                 right_ear = trials['right_ear'][trial][0]
@@ -677,11 +695,17 @@ class SessionStats:
                 angle = (led_angle - head_angle) % 360
 
                 if not np.isnan(angle):
+                    key = int(angle // 30 * 30) + 15
+
+                    # if no sensor, trial is a timeout and we skip
+                    if sensor is None:
+                        session_stats[key]['timeout'] += 1
+                        continue
+
                     # determine if trial is successful, non-impulsive, and gets right port
                     success, non_impulsive, right_port = trial_success(led, sensor, gocue)
 
                     # bin by head angle
-                    key = int(angle // 30 * 30) + 15
                     session_stats[key]['success'] += success
                     session_stats[key]['non_impulsive'] += non_impulsive
                     session_stats[key]['right_port'] += right_port
