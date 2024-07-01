@@ -17,7 +17,7 @@ class ChemoTime:
     Then plots success rates by angle.
     """
 
-    name = 'phase_9c_chemotime_plot'
+    name = 'chemo_time_plot'
     query = 'Experiment'
     returns = {'plot':plt.Figure}
 
@@ -114,7 +114,7 @@ class Chemo:
     Then plots success rates by angle.
     """
 
-    name = 'phase_9c_chemo_plot'
+    name = 'chemo_plot'
     query = 'Experiment'
     returns = {'plot':plt.Figure}
 
@@ -269,7 +269,7 @@ class AnglePlot13:
     Then plots success rates by angle.
     """
 
-    name = 'phase_9c_angle_plot_13'
+    name = 'angle_plot_13'
     query = 'Experiment'
     returns = {'plot':plt.Figure}
 
@@ -329,7 +329,7 @@ class TimeoutAnglePlot:
     Then plots success rates by angle.
     """
 
-    name = 'phase_9c_timeoutangle_plot'
+    name = 'timeoutangle_plot'
     query = 'Experiment'
     returns = {'plot':plt.Figure}
 
@@ -381,7 +381,7 @@ class AnglePlot:
     Then plots success rates by angle.
     """
 
-    name = 'phase_9c_angle_plot'
+    name = 'angle_plot'
     query = 'Experiment'
     returns = {'plot':plt.Figure}
 
@@ -438,7 +438,7 @@ class Training:
     Then sorts by animal and calculates success rates.
     """
 
-    name = 'phase_9c_training'
+    name = 'training'
     query = 'Experiment'
     returns = {'plot':plt.Figure}
 
@@ -564,7 +564,7 @@ class SessionStatsNoAngle:
     Computes led, sensor and gocue for each trial for a given session.
     """
 
-    name = 'phase_9c_session_stats_no_angle'
+    name = 'session_stats_no_angle'
     query = 'Session'
     returns = {'session_stats':list}
 
@@ -627,7 +627,7 @@ class SessionStats:
     Computes led, sensor, gocue and head angle for each trial for a given session, returns sums binned by angle.
     """
 
-    name = 'phase_9c_session_stats'
+    name = 'session_stats'
     query = 'Session'
     args = {'session_range':list, 'buffer':int} # list of two floats giving the range of trials to consider
     returns = {'session_stats':float}
