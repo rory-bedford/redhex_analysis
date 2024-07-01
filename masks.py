@@ -28,15 +28,15 @@ class StefanMask:
         # initially concatenate all on times and all off times
         on_times = np.array([])
         for cue in [f'led{i}' for i in range(1,7)] + ['gocue']:
-            data = locals()[f'{cue}_data'][0]
-            timestamps = locals()[f'{cue}_timestamps'][0]
+            data = locals()[f'{cue}_data']
+            timestamps = locals()[f'{cue}_timestamps']
             start = timestamps[data == 1]
             on_times = np.concatenate((on_times,start))
 
         off_times = np.array([])
         for off in [f'sensor{i}' for i in range(1,7)]:
-            data = locals()[f'{off}_data'][0]
-            timestamps = locals()[f'{off}_timestamps'][0]
+            data = locals()[f'{off}_data']
+            timestamps = locals()[f'{off}_timestamps']
             start = timestamps[data == 1]
             off_times = np.concatenate((off_times,start))
 

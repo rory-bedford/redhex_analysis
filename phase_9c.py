@@ -23,6 +23,7 @@ class ChemoTime:
 
     def run(key):
 
+
         exclusion_list = [383,385,387,384,386,388,379,380] # corrupted session ids
 
         # filter to all that are between 17/05 and 19/50
@@ -34,6 +35,8 @@ class ChemoTime:
         controldf.reset_index(inplace=True)
         controldf = controldf[~controldf['session_id'].isin(exclusion_list)]
         controldf['date'] = controldf['session_timestamp'].dt.date
+
+        print(controldf)
 
         # filter to all that are between 17/05 and 19/50
         start_date = datetime.datetime(2024, 5, 21, 0, 0, 0)
@@ -53,7 +56,7 @@ class ChemoTime:
                 if j == 0: # first 10 mins is control
                     continue
                 key = {key:row.to_dict()[key] for key in ['experimenter','experiment_id','session_id']}
-                stats = phase_9c_session_stats_no_angle(key)['session_stats']
+                stats = session_stats_no_angle(key)['session_stats']
                 stat_dict = {'success':0, 'non_impulsive':0, 'right_port':0, 'total':0}
                 for trial in stats:
                     for k, v in trial.items():
@@ -68,7 +71,7 @@ class ChemoTime:
                 if j == 0: # first 10 mins is control
                     continue
                 key = {key:row.to_dict()[key] for key in ['experimenter','experiment_id','session_id']}
-                stats = phase_9c_session_stats_no_angle(key)['session_stats']
+                stats = session_stats_no_angle(key)['session_stats']
                 stat_dict = {'success':0, 'non_impulsive':0, 'right_port':0, 'total':0}
                 for trial in stats:
                     for k, v in trial.items():
@@ -142,8 +145,8 @@ class Chemo:
             # compute success stats for second and third sessions
             basekey = {key:group.iloc[1].to_dict()[key] for key in ['experimenter','experiment_id','session_id']}
             controlkey = {key:group.iloc[2].to_dict()[key] for key in ['experimenter','experiment_id','session_id']}
-            base_stats = phase_9c_session_stats_no_angle(basekey)['session_stats']
-            control_stats = phase_9c_session_stats_no_angle(controlkey)['session_stats']
+            base_stats = session_stats_no_angle(basekey)['session_stats']
+            control_stats = session_stats_no_angle(controlkey)['session_stats']
 
             # aggregate stats across dates
             for trial in base_stats:
@@ -182,8 +185,8 @@ class Chemo:
             activebase_dict = {'success':0, 'non_impulsive':0, 'right_port':0, 'total':0, 'date':i[1], 'animal_name':i[0]}
             activekey = {key:group.iloc[1].to_dict()[key] for key in ['experimenter','experiment_id','session_id']}
             activebasekey = {key:group.iloc[2].to_dict()[key] for key in ['experimenter','experiment_id','session_id']}
-            active_stats = phase_9c_session_stats_no_angle(activekey)['session_stats']
-            activebase_stats = phase_9c_session_stats_no_angle(activebasekey)['session_stats']
+            active_stats = session_stats_no_angle(activekey)['session_stats']
+            activebase_stats = session_stats_no_angle(activebasekey)['session_stats']
             for trial in active_stats:
                 for k, v in trial.items():
                     active_dict[k] += int(v)
@@ -292,7 +295,7 @@ class AnglePlot13:
             group.reset_index(inplace=True)
             row = group.iloc[1]
             key = {key:row.to_dict()[key] for key in ['experimenter','experiment_id','session_id']}
-            session_stats = phase_9c_session_stats(key, session_range=[0,0.5])['session_stats']
+            session_stats = session_stats(key, session_range=[0,0.5])['session_stats']
             for k, v in session_stats.items():
                 bindf.append({'angle':int(k), 
                             'success':v['success'] / v['total'] if v['total'] > 0 else 0,
@@ -350,7 +353,7 @@ class TimeoutAnglePlot:
         for i, row in df.iterrows():
             print(row)
             key = {key:row.to_dict()[key] for key in ['experimenter','experiment_id','session_id']}
-            session_stats = phase_9c_session_stats(key, session_range=[0.25,1])['session_stats']
+            session_stats = session_stats(key, session_range=[0.25,1])['session_stats']
             for k, v in session_stats.items():
                 bindf.append({'angle':int(k), 
                             'timeout':v['timeout'] / v['total']})
@@ -401,7 +404,7 @@ class AnglePlot:
         # loop through array and append success stats
         for i, row in df.iterrows():
             key = {key:row.to_dict()[key] for key in ['experimenter','experiment_id','session_id']}
-            session_stats = phase_9c_session_stats(key, session_range=[0.25,1])['session_stats']
+            session_stats = session_stats(key, session_range=[0.25,1])['session_stats']
             for k, v in session_stats.items():
                 bindf.append({'angle':int(k), 
                               'success':v['success'] / v['total'], 
@@ -465,7 +468,7 @@ class Training:
 
                 # compute session stats
                 key = {key:row.to_dict()[key] for key in ['experimenter','experiment_id','session_id']}
-                session_stats = phase_9c_session_stats_no_angle(key)['session_stats']
+                session_stats = session_stats_no_angle(key)['session_stats']
 
                 if len(session_stats) > 10:
                     if row['session_timestamp'].date() not in date_dict:
