@@ -11,6 +11,7 @@ class StefanMask:
 
     name = 'stefan_mask'
     query = 'World'
+    data = 'IntervalEvents'
     returns = {'data':np.ndarray, 'timestamps':np.ndarray}
 
     def run(key):
@@ -75,6 +76,7 @@ class DanMask:
 
     name = 'dan_mask'
     query = 'World'
+    data = 'IntervalEvents'
     returns = {'data':np.ndarray, 'timestamps':np.ndarray}
 
     def run(key):
