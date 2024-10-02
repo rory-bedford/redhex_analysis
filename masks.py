@@ -13,6 +13,7 @@ class StefanMask:
     query = 'World'
     data = 'IntervalEvents'
     returns = {'data':np.ndarray, 'timestamps':np.ndarray}
+    mask = True
 
     def run(key):
 
@@ -78,6 +79,7 @@ class DanMask:
     query = 'World'
     data = 'IntervalEvents'
     returns = {'data':np.ndarray, 'timestamps':np.ndarray}
+    mask = True
 
     def run(key):
 
