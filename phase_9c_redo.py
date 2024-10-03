@@ -7,8 +7,7 @@ from pathlib import Path
 import datajoint as dj
 from scipy.stats import wilcoxon
 import statsmodels.api as sm
-
-plt.style.use('tableau-colorblind10')
+from tripodilab_colourscheme import *
 
 
 @antelope_analysis
@@ -24,7 +23,8 @@ class AnglePlot:
     returns = {
         'Success':plt.Figure, 'Impulsive':plt.Figure, 'Right Port':plt.Figure,
         'Success Behind':plt.Figure, 'Impulsive Behind':plt.Figure, 'Right Port Behind':plt.Figure,
-        'Success In Front':plt.Figure, 'Impulsive In Front':plt.Figure, 'Right Port In Front':plt.Figure
+        'Success In Front':plt.Figure, 'Impulsive In Front':plt.Figure, 'Right Port In Front':plt.Figure,
+        'Success Total':plt.Figure, 'Impulsive Total':plt.Figure, 'Right Port Total':plt.Figure
                }
     key = {'experimenter':'dwelch', 'experiment_id':1}
 
@@ -53,7 +53,7 @@ class AnglePlot:
             # loop through array and append success stats
             for i, row in date_df.iterrows():
                 key = {key:row.to_dict()[key] for key in ['experimenter','experiment_id','session_id']}
-                session_stats_dict = session_stats(key, session_range=[0.25,1])['session_stats']
+                session_stats_dict = session_stats(key, session_range=[0,1])['session_stats']
                 for k, v in session_stats_dict.items():
                     if v['total']:
                         bindf.append({'angle':int(k), 
@@ -92,7 +92,9 @@ class AnglePlot:
             fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
             for date in [13, 15]:
                 temp_df = df[df['date'] == date].drop(columns='animal').groupby('angle').mean().reset_index()
+                std_err = df[df['date'] == date].drop(columns='animal').groupby('angle').std().reset_index()
                 ax.plot(temp_df['angle'] * np.pi / 180, temp_df[feature], label=labels[date])
+                ax.fill_between(temp_df['angle'] * np.pi / 180, temp_df[feature] - std_err[feature], temp_df[feature] + std_err[feature], alpha=0.2)
             ax.set_title(f'{feature} Rates')
             ax.grid(True)
             ax.set_ylim(0, 1)
@@ -129,23 +131,62 @@ class AnglePlot:
                 ax.scatter(
                     np.repeat(1, len(day1[feature])),  # x-coordinates for Day 1
                     day1[feature],                    # y-coordinates for Day 1 data
-                    color='blue',                     # Color of the crosses
                     marker='x',                       # Shape of the crosses
                     s=50                            # Size of the crosses
                 )
                 ax.scatter(
                     np.repeat(2, len(day3[feature])),  # x-coordinates for Day 3
                     day3[feature],                    # y-coordinates for Day 3 data
-                    color='orange',                      # Color of the crosses
                     marker='x',                       # Shape of the crosses
                     s=50                            # Size of the crosses
                 )
                 ax.set_ylim(0, 1.1)
                 ax.set_yticks(np.arange(0, 1.2, 0.2))
                 ax.set_title(f'{feature} {position}')
+                ax.spines['top'].set_visible(False)
+                ax.spines['right'].set_visible(False)
                 fig.legend()
                 plot_dict[f'{feature} {position}'] = fig
                 fig.savefig(f'/lmb/home/rbedford/Documents/dan_plots2/{feature}_{position}.png')
+
+            # total
+            temp_df = df[[feature, 'animal', 'date', 'total']]
+            temp_df[feature] = temp_df[feature] * temp_df['total'] # want weighted average
+            temp_df = temp_df.groupby(['animal','date']).sum().reset_index()
+            temp_df[feature] = temp_df[feature] / temp_df['total']
+            day1 = temp_df[temp_df['date'] == 13]
+            day3 = temp_df[temp_df['date'] == 15]
+            t_stat, p_value = wilcoxon(day1[feature].values, day3[feature].values)
+            fig, ax = plt.subplots()
+            sig_label = sig_value(p_value)
+            ax.annotate(sig_label, xy=(1.5, 1),
+                        xytext=(0, 3), textcoords="offset points", ha='center', fontsize=12)
+            ax.boxplot([day1[feature].values, day3[feature].values], positions=[1,2], widths=0.3, labels=['Day 1', 'Day 3'],
+                        boxprops=dict(color='black'),  # Set the box color
+                        medianprops=dict(color='black'),  # Set the median line color
+                        whiskerprops=dict(color='black'),  # Set the whisker color
+                        capprops=dict(color='black'),  # Set the cap color
+                        flierprops=dict(markerfacecolor='black', marker='o'))  # Set the outlier color
+            ax.scatter(
+                np.repeat(1, len(day1[feature])),  # x-coordinates for Day 1
+                day1[feature],                    # y-coordinates for Day 1 data
+                marker='x',                       # Shape of the crosses
+                s=50                            # Size of the crosses
+            )
+            ax.scatter(
+                np.repeat(2, len(day3[feature])),  # x-coordinates for Day 3
+                day3[feature],                    # y-coordinates for Day 3 data
+                marker='x',                       # Shape of the crosses
+                s=50                            # Size of the crosses
+            )
+            ax.set_ylim(0, 1.1)
+            ax.set_yticks(np.arange(0, 1.2, 0.2))
+            ax.set_title(f'{feature} Total')
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            fig.legend()
+            plot_dict[f'{feature} Total'] = fig
+            fig.savefig(f'/lmb/home/rbedford/Documents/dan_plots2/{feature}_total.png')
 
         return tuple(plot_dict.values())
 
