@@ -30,6 +30,11 @@ class AnglePlot:
 
     def run(key):
 
+        returns = ['Success', 'Impulsive', 'Right Port',
+                   'Success Behind', 'Impulsive Behind', 'Right Port Behind',
+                   'Success In Front', 'Impulsive In Front', 'Right Port In Front',
+                   'Success Total', 'Impulsive Total', 'Right Port Total']
+
         no_data = [255, 256, 243, 244] # sessions with little or no data
 
         # fetch data
@@ -188,7 +193,7 @@ class AnglePlot:
             plot_dict[f'{feature} Total'] = fig
             fig.savefig(f'/lmb/home/rbedford/Documents/dan_plots2/{feature}_total.png')
 
-        return tuple(plot_dict.values())
+        return tuple(plot_dict[k] for k in returns)
 
 
 def sig_value(p_value):
