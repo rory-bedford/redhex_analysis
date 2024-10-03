@@ -5,9 +5,8 @@ import datetime
 import pandas as pd
 from pathlib import Path
 import datajoint as dj
-from scipy.stats import ttest_ind
+from scipy.stats import wilcoxon
 import statsmodels.api as sm
-from statsmodels.multivariate.manova import MANOVA
 
 plt.style.use('tableau-colorblind10')
 
@@ -20,7 +19,7 @@ class AnglePlot:
 
     name = 'angle_plot'
     query = 'Experiment'
-    data = ['Session', 'Self', 'Animal']
+    data = ['Session', 'Self', 'Animal', 'Mask']
     calls = ['session_stats']
     returns = {
         'Success':plt.Figure, 'Impulsive':plt.Figure, 'Right Port':plt.Figure,
@@ -31,11 +30,7 @@ class AnglePlot:
 
     def run(key):
 
-        # questions for dan - loads of sessions per animal on each day
-        # do we want 1000ms?
-        # session range?
-        # currently just summing across all sessions across all animals
-        # manova? : each angle separate, 3 dependent variables, days are independent variables
+        no_data = [255, 256, 243, 244] # sessions with little or no data
 
         # fetch data
         df = (Session * Self * Animal & key).proj('session_notes','session_timestamp','animal_name').fetch(format='frame')
@@ -49,6 +44,11 @@ class AnglePlot:
             start_date = datetime.datetime(2024, 5, date, 0, 0, 0)
             end_date = datetime.datetime(2024, 5, date + 1, 0, 0, 0)
             date_df = df[(df['session_notes'].str.contains('phase:9c')) & (df['session_notes'].str.contains('wait:1000')) & (df['session_timestamp'] >= start_date) & (df['session_timestamp'] <= end_date)]
+            date_df = date_df[~date_df['session_id'].isin(no_data)]
+            if date == 13:
+                date_df = date_df.loc[date_df.groupby('animal_name')['session_timestamp'].idxmin()].reset_index(drop=True) # take first session on 13th
+            else:
+                date_df = date_df.loc[date_df.groupby('animal_name')['session_timestamp'].idxmax()].reset_index(drop=True) # max on 15th
 
             # loop through array and append success stats
             for i, row in date_df.iterrows():
@@ -60,67 +60,92 @@ class AnglePlot:
                                     'Success':v['success'] / v['total'], 
                                     'Impulsive':v['impulsive'] / v['total'], 
                                     'Right_Port':v['right_port'] / v['total'],
-                                    'date':date})
+                                    'total':v['total'],
+                                    'date':date,
+                                    'animal':row['animal_name']})
                         if int(k) == 15: # hacky way to get circle closed
                             bindf.append({'angle':375, 
                                         'Success':v['success'] / v['total'], 
                                         'Impulsive':v['impulsive'] / v['total'], 
                                         'Right_Port':v['right_port'] / v['total'],
-                                        'date':date})
+                                        'total':v['total'],
+                                        'date':date,
+                                        'animal':row['animal_name']})
 
         df = pd.DataFrame(bindf)
-
-        # compute manova statistics for each angle
-        manova_results = {}
-        for angle in df['angle'].unique():
-            temp_df = df[df['angle'] == angle]
-            manova = MANOVA.from_formula('Success + Impulsive + Right_Port ~ date', data=temp_df)
-            manova_results[angle] = manova.mv_test()['date']['stat']['Pr > F']['Wilks\' lambda']
-
-        df = df.groupby(['angle','date']).mean().reset_index()
         df.rename(columns={'Right_Port':'Right Port'}, inplace=True)
+
         # loop through 3 plots
         plot_dict = {}
         labels = {13:'Day 1', 15:'Day 3'}
         for feature in ['Success', 'Impulsive', 'Right Port']:
 
+            # wilcoxon test
+            wilcoxon_dict = {}
+            for angle in df.angle.unique():
+                temp_df = df[df['angle'] == angle][[feature, 'animal', 'date']]
+                temp_df = temp_df.pivot(index='animal', columns='date', values=feature)
+                stat, p_value = wilcoxon(temp_df[13], temp_df[15])
+                wilcoxon_dict[angle] = p_value
+
             # radial plot
             fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
             for date in [13, 15]:
-                temp_df = df[df['date'] == date]
+                temp_df = df[df['date'] == date].drop(columns='animal').groupby('angle').mean().reset_index()
                 ax.plot(temp_df['angle'] * np.pi / 180, temp_df[feature], label=labels[date])
             ax.set_title(f'{feature} Rates')
             ax.grid(True)
             ax.set_ylim(0, 1)
-            for angle, p_value in manova_results.items():
-                print(angle, p_value)
+            for angle, p_value in wilcoxon_dict.items():
                 ax.annotate(sig_value(p_value), xy=(np.radians(angle), 0.9),
                             ha='center', va='center', fontsize=8)
             fig.legend()
             ax.set_aspect('equal')
             ax.set_theta_zero_location('N')
             plot_dict[feature] = fig
+            fig.savefig(f'/lmb/home/rbedford/Documents/dan_plots2/{feature}.png')
 
             # in front / behind plot
             for position in ['Behind', 'In Front']:
 
                 temp_df = df[(df['angle'] > 90) & (df['angle'] < 270)] if position == 'Behind' else df[~((df['angle'] > 90) & (df['angle'] < 270))] # varies across angle and date
+                temp_df = temp_df[[feature, 'animal', 'date', 'total']]
+                temp_df[feature] = temp_df[feature] * temp_df['total'] # want weighted average
+                temp_df = temp_df.groupby(['animal','date']).sum().reset_index()
+                temp_df[feature] = temp_df[feature] / temp_df['total']
                 day1 = temp_df[temp_df['date'] == 13]
                 day3 = temp_df[temp_df['date'] == 15]
-                t_stat, p_value = ttest_ind(day1[feature].values, day3[feature].values)
+                t_stat, p_value = wilcoxon(day1[feature].values, day3[feature].values)
                 fig, ax = plt.subplots()
                 sig_label = sig_value(p_value)
                 ax.annotate(sig_label, xy=(1.5, 1),
                             xytext=(0, 3), textcoords="offset points", ha='center', fontsize=12)
-                ax.axhline(y=0.95,xmin=0.25,xmax=0.75, color='black')
-                ax.bar(1, day1.mean()[feature], label='Day 1')
-                ax.bar(2, day3.mean()[feature], label='Day 3')
+                ax.boxplot([day1[feature].values, day3[feature].values], positions=[1,2], widths=0.3, labels=['Day 1', 'Day 3'],
+                            boxprops=dict(color='black'),  # Set the box color
+                            medianprops=dict(color='black'),  # Set the median line color
+                            whiskerprops=dict(color='black'),  # Set the whisker color
+                            capprops=dict(color='black'),  # Set the cap color
+                            flierprops=dict(markerfacecolor='black', marker='o'))  # Set the outlier color
+                ax.scatter(
+                    np.repeat(1, len(day1[feature])),  # x-coordinates for Day 1
+                    day1[feature],                    # y-coordinates for Day 1 data
+                    color='blue',                     # Color of the crosses
+                    marker='x',                       # Shape of the crosses
+                    s=50                            # Size of the crosses
+                )
+                ax.scatter(
+                    np.repeat(2, len(day3[feature])),  # x-coordinates for Day 3
+                    day3[feature],                    # y-coordinates for Day 3 data
+                    color='orange',                      # Color of the crosses
+                    marker='x',                       # Shape of the crosses
+                    s=50                            # Size of the crosses
+                )
                 ax.set_ylim(0, 1.1)
                 ax.set_yticks(np.arange(0, 1.2, 0.2))
-                ax.set_xticks([])
                 ax.set_title(f'{feature} {position}')
                 fig.legend()
                 plot_dict[f'{feature} {position}'] = fig
+                fig.savefig(f'/lmb/home/rbedford/Documents/dan_plots2/{feature}_{position}.png')
 
         return tuple(plot_dict.values())
 
